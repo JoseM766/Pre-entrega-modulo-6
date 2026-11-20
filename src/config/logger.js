@@ -46,6 +46,7 @@ const errorFileTransport = new DailyRotateFile({
 export const logger = winston.createLogger({
   levels: LOG_LEVEL_PRIORITY,
   level: config.logs.level,
+  silent: config.isTest, // durante los tests no se escribe en consola ni en archivos
   transports: [new winston.transports.Console({ format: consoleFormat }), errorFileTransport],
 });
 

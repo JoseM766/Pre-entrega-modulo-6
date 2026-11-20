@@ -1,103 +1,108 @@
-# ShipNow — Pre-entrega Módulo 5: Documentación de API con Swagger
+# ShipNow — Pre-entrega Módulo 6: Testing funcional con Mocha, Chai y Supertest
 
-Documentación interactiva de ShipNow API con **Swagger UI / OpenAPI 3**, desde donde se pueden consultar y probar los endpoints.
+Suite de tests funcionales automatizados que validan los endpoints de ShipNow contra una base de datos de testing, cubriendo casos exitosos y errores esperados (status HTTP + estructura del body + formato de error del módulo de errores).
 
-## Ruta de la documentación
+## Herramientas
 
-```
-http://localhost:8080/api/docs
-```
+| Herramienta | Para qué se usa |
+|---|---|
+| **Mocha** | Organiza y ejecuta los tests |
+| **Chai** | Aserciones (`expect`) sobre el status y la estructura del body |
+| **Supertest** | Hace las peticiones HTTP a la app de Express sin abrir un puerto |
+| **cross-env** | Define `NODE_ENV=test` de forma compatible con Windows, Mac y Linux |
 
-(si cambiás `PORT` en el `.env`, usá ese puerto).
+La app de Express está separada del servidor: `src/app.js` exporta `app` (los tests lo importan) y `src/server.js` es el que conecta a la base y escucha en un puerto.
 
-## Cómo levantar el servidor
+## Cómo ejecutar los tests
 
 ```bash
 npm install
-cp .env.example .env     # completar MONGODB_URI y JWT_SECRET
-npm run seed             # crea usuarios y productos de prueba
-npm run dev
+cp .env.test.example .env.test     # y completar MONGODB_URI (ver abajo)
+npm test
 ```
 
-Después abrí `http://localhost:8080/api/docs` en el navegador.
+Resultado esperado: **177 tests passing**. La suite se puede correr las veces que se quiera seguidas, sin borrar nada a mano.
 
-## Qué está documentado
+## ¿Se necesita una base de datos de testing? Sí
 
-Los endpoints están agrupados por tags:
+Los tests usan una **base de datos separada y descartable** (por ejemplo `shipnow_test`), distinta de la de desarrollo. Pueden ser:
 
-| Tag | Qué documenta |
+- **MongoDB local:** `mongodb://127.0.0.1:27017/shipnow_test`
+- **MongoDB Atlas:** la misma cluster que usás para desarrollo, pero con otro nombre de base: `mongodb+srv://USUARIO:PASSWORD@cluster0.xxxxx.mongodb.net/shipnow_test`. No hace falta crearla: se crea sola.
+
+**Protección:** antes de correr, los tests verifican que el nombre de la base contenga `test`. Si no es así (por ejemplo, si apuntás por error a la base de desarrollo), la suite se detiene con un error y **no borra nada**.
+
+## Variables de entorno necesarias
+
+El entorno de testing tiene su propio archivo, `.env.test` (no se sube al repo; el modelo es `.env.test.example`). Con `NODE_ENV=test` la aplicación lee `.env.test` en lugar de `.env`.
+
+| Variable | Valor para testing |
 |---|---|
-| **Users** | `GET /api/users`, `GET /api/users/{id}` |
-| **Orders** | `GET /api/orders`, `POST /api/orders`, `GET /api/orders/{id}` |
-| **Deliveries** | `GET /api/deliveries`, `POST /api/deliveries`, `GET /api/deliveries/{id}`, `PATCH /api/deliveries/{id}/status` |
-| **Mocks** | `GET /api/mocks/users` (y alias `mockingusers`), `GET /api/mocks/orders` (y alias `mockingorders`), `GET /api/mocks/deliveries`, `POST /api/mocks/seed`, `POST /api/mocks/generateData` |
-| **Logger** | `GET /api/loggerTest` (herramienta interna de validación, no es funcionalidad de negocio) |
-| Sessions | register, login, current, logout (necesarios para probar los endpoints protegidos) |
-| Products | CRUD de productos |
-| Health | `GET /api/health` |
+| `NODE_ENV` | `test` |
+| `PORT` | `8081` (no se abre ningún puerto, pero la configuración lo exige) |
+| `MONGODB_URI` | URI de la base **de test** (el nombre debe contener `test`) |
+| `JWT_SECRET` | `test_secret` (cualquier valor) |
 
-Cada endpoint indica método, ruta, descripción, parámetros, body esperado (con ejemplo), respuesta exitosa y errores posibles con sus códigos.
+Durante los tests el logger queda en silencio (no escribe en consola ni en `logs/`).
 
-**Schemas reutilizables** (`components/schemas`): `User`, `Order`, `OrderItem`, `Delivery`, `Product`, `SuccessResponse`, `ErrorResponse`, enums de estados/roles/prioridades y respuestas envolventes (`OrderResponse`, `OrderListResponse`, etc.).
+## Módulos cubiertos
 
-**Errores:** todos usan el schema `ErrorResponse` (`status`, `error`, `message`) del manejo de errores del Módulo 3. Los códigos documentados en cada endpoint son los que la API realmente devuelve, incluidos: datos inválidos (`400`), no autenticado (`401`), sin permisos (`403`), no encontrado (`404`), conflicto (`409`), error interno (`500`), cantidad inválida en mocks (`INVALID_MOCK_AMOUNT`) y estado inválido en pedidos y entregas (`INVALID_ORDER_STATUS`, `INVALID_DELIVERY_STATUS`).
+Los tests están en la carpeta `tests/`, agrupados por recurso:
 
-## Cómo probar los endpoints desde Swagger
+| Archivo | Qué cubre |
+|---|---|
+| `users.test.js` | Obtener usuarios y obtener un usuario por id |
+| `orders.test.js` | Obtener pedidos, crear pedido y consultar pedido por id |
+| `deliveries.test.js` | Asignar pedido a repartidor y **actualizar estados** (assigned → picked_up → in_transit → delivered) |
+| `mocks.test.js` | Mocks de usuarios, pedidos y entregas; carga en MongoDB (`seed` y `generateData`) |
+| `logger.test.js` | Endpoint `/api/loggerTest`, niveles y registro de errores |
+| `swagger.test.js` | Ruta `/api/docs` y coherencia de la documentación con la API |
+| `sessions.test.js` | Registro, login, sesión actual y logout |
+| `products.test.js` | CRUD de productos |
+| `errors.test.js` | Ruta inexistente, JSON inválido y health |
 
-1. Corré `npm run seed` una vez.
-2. En Swagger, abrí **Sessions → POST /api/sessions/login**, tocá **Try it out** e ingresá un usuario de prueba:
+**Casos exitosos:** listados correctos, crear un pedido con datos válidos (el total se calcula, el estado inicial es `created`), generar mocks y verificar que se guardan con sus relaciones (pedido ↔ cliente, entrega ↔ pedido ↔ repartidor), acceder al logger y a Swagger.
 
-   | Rol | Email | Contraseña |
-   |---|---|---|
-   | admin | `admin@shipnow.com` | `admin1234` |
-   | cliente (`user`) | `user@shipnow.com` | `user1234` |
-   | repartidor (`driver`) | `driver@shipnow.com` | `driver1234` |
+**Casos de error** (siempre con status HTTP + código + mensaje del formato de error del Módulo 3): datos incompletos (`MISSING_FIELDS`), recurso inexistente (`USER_NOT_FOUND`, `ORDER_NOT_FOUND`, `PRODUCT_NOT_FOUND`, `DELIVERY_NOT_FOUND`), estado inválido (`INVALID_ORDER_STATUS`, `INVALID_DELIVERY_STATUS`), mocks con cantidades inválidas (`INVALID_MOCK_AMOUNT`), falla de MongoDB durante la carga (`MOCK_GENERATION_ERROR`), ruta inexistente (`ROUTE_NOT_FOUND`), sin sesión (`401`) y sin permisos (`403`).
 
-3. La sesión se guarda en una cookie y Swagger la envía sola en los siguientes pedidos. Para probar con otro rol, hacé login de nuevo con ese usuario.
+Cada test valida **la estructura del body y sus propiedades importantes**, no solo que el endpoint responda. Por ejemplo, un pedido se verifica con sus campos (`id`, `customer`, `items`, `total`, `status`, `priority`…) y sus tipos.
 
-**Flujo sugerido de pedido y entrega:**
+## Coherencia con Swagger
 
-1. Como **cliente**: `POST /api/orders` (guardá el `id` del pedido).
-2. Como **admin**: `GET /api/users` para ver el `id` del repartidor y `POST /api/deliveries` con `orderId` y `driverId`.
-3. Como **repartidor**: `PATCH /api/deliveries/{id}/status` con `picked_up`, luego `in_transit` y por último `delivered`. El estado del pedido se actualiza solo.
+Todo comportamiento documentado en Swagger tiene su test: cada error documentado (por ejemplo, el `404` ante un recurso inexistente) está probado. Además, `swagger.test.js` comprueba de forma automática que:
 
-**Aclaraciones:**
-- Las entregas solo avanzan un paso por vez (`assigned → picked_up → in_transit → delivered`); si se salta un paso responde `INVALID_DELIVERY_STATUS`.
-- Un cliente solo ve sus pedidos y un repartidor solo sus entregas; el admin ve todo.
-- Los endpoints de **Mocks** no existen si `NODE_ENV=production`. El `POST /api/mocks/generateData` inserta datos reales en la base.
-- `GET /api/loggerTest` genera logs de todos los niveles; no es una funcionalidad de negocio.
+- todas las rutas reales de la API están documentadas y viceversa;
+- cada error documentado existe en el diccionario de errores con el mismo status HTTP;
+- la documentación incluye los tags Users, Orders, Deliveries, Mocks y Logger, y los schemas reutilizables.
 
-## Pedidos y entregas
+## Datos de prueba y limpieza
 
-Para poder documentar los módulos de pedidos y entregas se incorporaron sus endpoints, con la misma arquitectura por capas (router → controller → service → repository → modelo):
+- **Datos controlados y repetibles:** cada test crea lo que necesita dentro de la base de test (por ejemplo, un cliente y un repartidor antes de probar un pedido o una entrega) usando los generadores de mocks del Módulo 2 (`tests/helpers/factories.js`). No se usa ningún dato cargado a mano.
+- **Estrategia de limpieza** (`tests/setup/hooks.js`): antes de **cada test** se vacían todas las colecciones, y al terminar la suite se elimina la base de test y se cierra la conexión. Por eso ningún test depende de otro ni del orden de ejecución, y la suite se puede repetir sin límite.
 
-| Método | Ruta | Acceso | Descripción |
-|---|---|---|---|
-| POST | `/api/orders` | user, admin | Crea un pedido. El cliente es el usuario autenticado, el total se calcula y el estado inicial es `created` |
-| GET | `/api/orders` | user, admin | Lista pedidos (el cliente ve solo los suyos). Filtros: `status`, `page`, `limit` |
-| GET | `/api/orders/{id}` | user, admin | Detalle de un pedido |
-| POST | `/api/deliveries` | admin | Asigna un pedido `created` a un repartidor y lo pasa a `assigned` |
-| GET | `/api/deliveries` | admin, driver | Lista entregas (el repartidor ve solo las suyas) |
-| GET | `/api/deliveries/{id}` | admin, driver | Detalle de una entrega |
-| PATCH | `/api/deliveries/{id}/status` | admin, driver | Avanza el estado de la entrega y del pedido |
-
-## Organización de la documentación
-
-La configuración de Swagger está separada de las rutas, en `src/docs/`:
+## Estructura de la carpeta de tests
 
 ```
-src/docs/
-├── swagger.config.js   # info general (nombre, versión, descripción), servidor local y tags
-├── schemas.yaml        # schemas reutilizables y seguridad (cookie)
-├── sessions.yaml
-├── users.yaml
-├── products.yaml
-├── orders.yaml
-├── deliveries.yaml
-├── mocks.yaml
-└── logger.yaml
+tests/
+├── setup/
+│   ├── env.js            # fuerza NODE_ENV=test antes de cargar la app
+│   └── hooks.js          # conexión, protección y limpieza de la base de test
+├── helpers/
+│   ├── factories.js      # crea usuarios, pedidos y entregas de prueba
+│   └── assertions.js     # validadores de estructura (usuario, pedido, error...)
+├── users.test.js
+├── orders.test.js
+├── deliveries.test.js
+├── mocks.test.js
+├── logger.test.js
+├── swagger.test.js
+├── sessions.test.js
+├── products.test.js
+└── errors.test.js
 ```
 
-`app.js` solo monta la interfaz: `app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpecs))`.
+La configuración de Mocha está en `.mocharc.cjs` y el script en `package.json`:
 
-Tecnologías: `swagger-jsdoc` (arma la especificación a partir de los `.yaml`) y `swagger-ui-express` (muestra la interfaz).
+```json
+"test": "cross-env NODE_ENV=test mocha"
+```
